@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
 
-import os
 import logging
+import os
+import signal
+import sys
 from configparser import ConfigParser
 from common.server import Server
+from common.graceful_quit import GracefulQuitFlag
 
+graceful_quit_flag = GracefulQuitFlag()
+
+def sigterm_handler(_signo, _stack_frame):
+    logging.info('SIGTERM signal received')
+    graceful_quit_flag.enable()
 
 def initialize_config():
     """ Parse env variables or config file to find program config params
@@ -37,13 +45,13 @@ def initialize_config():
 def main():
     config_params = initialize_config()
     initialize_log(config_params["logging_level"])
-
     # Log config parameters at the beginning of the program to verify the configuration
     # of the component
     logging.debug("Server configuration: {}".format(config_params))
 
     # Initialize server and start server loop
-    server = Server(config_params["port"], config_params["listen_backlog"])
+    server = Server(config_params["port"], config_params["listen_backlog"], graceful_quit_flag)
+    signal.signal(signal.SIGTERM, sigterm_handler)
     server.run()
 
 

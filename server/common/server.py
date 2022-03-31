@@ -3,11 +3,13 @@ import logging
 
 
 class Server:
-    def __init__(self, port, listen_backlog):
+    def __init__(self, port, listen_backlog, graceful_quit_flag):
         # Initialize server socket
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._server_socket.settimeout(1)
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
+        self._graceful_quit_flag = graceful_quit_flag
 
     def run(self):
         """
@@ -21,8 +23,13 @@ class Server:
         # TODO: Modify this program to handle signal to graceful shutdown
         # the server
         while True:
-            client_sock = self.__accept_new_connection()
-            self.__handle_client_connection(client_sock)
+            try:
+                client_sock = self.__accept_new_connection()
+                self.__handle_client_connection(client_sock)
+            except socket.timeout:
+                if self._graceful_quit_flag.isEnabled():
+                    logging.info("Shutting down. Stopped listening to new clients.")
+                    return
 
     def __handle_client_connection(self, client_sock):
         """
@@ -32,7 +39,16 @@ class Server:
         client socket will also be closed
         """
         try:
-            msg = client_sock.recv(1024).rstrip().decode('utf-8')
+            client_sock.settimeout(1)
+            received = False
+            while not received:
+                try:
+                    msg = client_sock.recv(1024).rstrip().decode('utf-8')
+                    received = True
+                except socket.timeout:
+                    if self._graceful_quit_flag.isEnabled():
+                        logging.info("Shutting down. Closing client socket.")
+                        client_sock.close()
             logging.info(
                 'Message received from connection {}. Msg: {}'
                 .format(client_sock.getpeername(), msg))
